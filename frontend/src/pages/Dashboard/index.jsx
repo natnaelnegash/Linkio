@@ -8,17 +8,95 @@ import { FaCamera } from "react-icons/fa6";
 import { MdEmojiEmotions } from "react-icons/md";
 import { FaInfoCircle } from "react-icons/fa";
 import { IoMdCall } from "react-icons/io";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useUserStore } from "../../lib/userStore";
-import { auth } from "../../lib/firebase";
+import { auth, db } from "../../lib/firebase";
 import { signOut } from "firebase/auth";
-import { useNavigate } from "react-router";
-
+import {
+  doc,
+  setDoc,
+  getDoc,
+  getDocs,
+  onSnapshot,
+  serverTimestamp,
+  updateDoc,
+  arrayUnion,
+} from "firebase/firestore";
+import { collection, query, where } from "firebase/firestore";
 const Dashboard = () => {
+  const [isUserAdded, setIsUserAdded] = useState();
+  const [user, setUser] = useState(null);
+  const [users, setUsers] = useState();
+  const [chats, setChats] = useState([]);
+  const [addmode, setAddmode] = useState(false);
+  const chatRef = collection(db, "chats");
   const { currentUser, fetchUserData } = useUserStore();
+  useEffect(() => {
+    const unSub = onSnapshot(
+      doc(db, "userchats", currentUser.id)
+      // async (res) => {
+      //   const items = res.data().chats;
+      //   const promisses = items.map(async (item) => {
+      //     const userDocRef = doc(db, "users", item.recieverId);
+      //     const userDocSnap = await getDocs(userDocRef);
+      //     const user = userDocSnap.data();
+      //     console.log(...item, user);
+      //     return { ...item, user };
+      //   });
+      //   const chatData = await Promise.all(promisses);
+      //   setChats(chatData);
+      // }
+    );
+    return () => unSub();
+  }, []);
   const handleLogout = () => {
     signOut(auth);
     fetchUserData();
+  };
+  const handleSearch = async (e) => {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    const username = formData.get("username");
+    try {
+      const userRef = collection(db, "users");
+      const q = query(userRef, where("username", "==", username));
+      const querySnapshot = await getDocs(q);
+      if (!querySnapshot.empty) {
+        setUser(querySnapshot.docs[0].data());
+      }
+    } catch (error) {
+      console.error(error.message);
+    }
+  };
+  const handleAdd = async () => {
+    const chatRef = collection(db, "chats");
+    const userChatsRef = collection(db, "userchats");
+    try {
+      const newChatRef = doc(chatRef);
+      await setDoc(newChatRef, {
+        createdAt: serverTimestamp(),
+        messages: [],
+      });
+      await updateDoc(doc(userChatsRef, user.id), {
+        chats: arrayUnion({
+          chatId: newChatRef.id,
+          lastMessage: "",
+          recieverId: currentUser.id,
+          updatedAt: Date.now(),
+        }),
+      });
+
+      await updateDoc(doc(userChatsRef, currentUser.id), {
+        chats: arrayUnion({
+          chatId: newChatRef.id,
+          lastMessage: "",
+          recieverId: user.id,
+          updatedAt: Date.now(),
+        }),
+      });
+    } catch (error) {
+      console.error(error.message);
+    }
   };
   return (
     <div>
@@ -65,12 +143,99 @@ const Dashboard = () => {
                       placeholder="Search"
                     />
                   </label>
-                  <FaPlusSquare />
+                  {/* Open the modal using document.getElementById('ID').showModal() method */}
+                  <button
+                    className="btn"
+                    onClick={() =>
+                      document.getElementById("my_modal_1").showModal()
+                    }
+                  >
+                    <FaPlusSquare />
+                  </button>
+                  <dialog id="my_modal_1" className="modal">
+                    <div className="modal-box w-2/4 h-2/5 flex">
+                      <div className="modal-action w-full justify-normal items-center">
+                        <form method="dialog">
+                          {/* if there is a button in form, it will close the modal */}
+                          <button className="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">
+                            ✕
+                          </button>
+                        </form>
+                        <div className="flex w-full h-full">
+                          <form
+                            onSubmit={handleSearch}
+                            className="flex flex-col justify-between h-full w-full"
+                          >
+                            <div className="flex items-center flex-1/2 justify-between gap-3 w-full">
+                              <label className="input flex w-full ">
+                                <svg
+                                  className="h-[1em] opacity-50"
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <g
+                                    strokeLinejoin="round"
+                                    strokeLinecap="round"
+                                    strokeWidth="2.5"
+                                    fill="none"
+                                    stroke="currentColor"
+                                  >
+                                    <circle cx="11" cy="11" r="8"></circle>
+                                    <path d="m21 21-4.3-4.3"></path>
+                                  </g>
+                                </svg>
+                                <input
+                                  type="search"
+                                  required
+                                  placeholder="Search User"
+                                  name="username"
+                                />
+                              </label>
+                              <button className="btn">Search User</button>
+                            </div>
+                            {user && (
+                              <div className="flex justify-between items-center flex-1/2">
+                                <div className="flex items-center gap-5 flex-1">
+                                  <div className="avatar">
+                                    <div className="w-12 h-12 rounded-full">
+                                      <img src="https://img.daisyui.com/images/stock/photo-1534528741775-53994a69daeb.webp" />
+                                    </div>
+                                  </div>
+                                  {user.username}
+                                </div>
+                                <button onClick={handleAdd} className="btn">
+                                  Add User
+                                </button>
+                              </div>
+                            )}
+                          </form>
+                        </div>
+                      </div>
+                    </div>
+                  </dialog>
                 </div>
               </div>
               {/* Chats/Contacts */}
               <div className="flex-8/10 overflow-auto">
-                <div className="p-2 border-b-1 border-b-gray-500 flex gap-5 items-center">
+                {chats?.chats?.map((chat, index) => (
+                  <div
+                    key={index}
+                    className="p-2 border-b-1 border-b-gray-500 flex gap-5 items-center"
+                  >
+                    <div className="avatar avatar-online">
+                      <div className="w-10 h-10 rounded-full">
+                        <img src="https://img.daisyui.com/images/stock/photo-1534528741775-53994a69daeb.webp" />
+                      </div>
+                    </div>
+                    <div className="flex-col">
+                      <div className="text-1xl">{user?.username}</div>
+                      <p className="text-1xl text-gray-400">
+                        {chat.lastMessage}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+                {/* <div className="p-2 border-b-1 border-b-gray-500 flex gap-5 items-center">
                   <div className="avatar avatar-online">
                     <div className="w-10 h-10 rounded-full">
                       <img src="https://img.daisyui.com/images/stock/photo-1534528741775-53994a69daeb.webp" />
@@ -80,29 +245,7 @@ const Dashboard = () => {
                     <div className="text-1xl">John Doe</div>
                     <p className="text-1xl text-gray-400">Lorem ipsum</p>
                   </div>
-                </div>
-                <div className="p-2 border-b-1 border-b-gray-500 flex gap-5 items-center">
-                  <div className="avatar avatar-online">
-                    <div className="w-10 h-10 rounded-full">
-                      <img src="https://img.daisyui.com/images/stock/photo-1534528741775-53994a69daeb.webp" />
-                    </div>
-                  </div>
-                  <div className="flex-col">
-                    <div className="text-1xl">John Doe</div>
-                    <p className="text-1xl text-gray-400">Lorem ipsum</p>
-                  </div>
-                </div>
-                <div className="p-2 border-b-1 border-b-gray-500 flex gap-5 items-center">
-                  <div className="avatar avatar-online">
-                    <div className="w-10 h-10 rounded-full">
-                      <img src="https://img.daisyui.com/images/stock/photo-1534528741775-53994a69daeb.webp" />
-                    </div>
-                  </div>
-                  <div className="flex-col">
-                    <div className="text-1xl">John Doe</div>
-                    <p className="text-1xl text-gray-400">Lorem ipsum</p>
-                  </div>
-                </div>
+                </div> */}
               </div>
             </div>
           </div>

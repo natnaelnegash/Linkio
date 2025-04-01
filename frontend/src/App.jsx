@@ -30,7 +30,7 @@ function App() {
       unSub();
     };
   }, [fetchUserData]);
-  console.log(currentUser);
+  // console.log(currentUser);
   return <div>{currentUser ? <Dashboard /> : <Login />}</div>;
   // if (isLoading) return (<h1>Loadingggg</h1>)
 }
